@@ -6,8 +6,9 @@
 #include <SDL_image.h>
 #include <SDL_keyboard.h>
 #include <random>
-#include <time.h>
+#include <ctime>
 #include <stdlib.h>
+
 
 /*
 WIDTH = Window Width
@@ -21,22 +22,47 @@ xlim = Iterator limit for grid x-coordinates
 i and j = Iterators to hit every point in the grid (for every increase in 'j',
 'i' will have increased by WIDTH and reset until 'j' has reached HEIGHT
 */
-const int WIDTH = 1000, HEIGHT = 1000, ITERATION_LIMIT = 200;
+const int16_t WIDTH = 1000, HEIGHT = 1000, searchRange = 4;
+const uint8_t stayAliveSize = 41;
+
+uint8_t stayAlive[stayAliveSize] = { 41,42,43,44,45,46,47,48,49,50,
+                                     51,52,53,54,55,56,57,58,59,60,
+                                     61,62,63,64,65,66,67,68,69,70,
+                                     71,72,73,74,75,76,77,78,79,80,81 };
+
+uint8_t birth[stayAliveSize] = { 41,42,43,44,45,46,47,48,49,50,
+                                     51,52,53,54,55,56,57,58,59,60,
+                                     61,62,63,64,65,66,67,68,69,70,
+                                     71,72,73,74,75,76,77,78,79,80,81 };
+
+const int FPS = 120;
+const int frameDelay = 1000 / FPS;
+Uint32 frameStart;
+int frameTime;
+
 int yy = 0, xx=0, al = 0;
-int ylim = HEIGHT - 1;      
-int xlim = WIDTH - 1;       
-int field[HEIGHT][WIDTH];   // Initialize space for grid
-int i, j = 0;               
-int NextField[HEIGHT][WIDTH];
-int counter = 0;
+int ylim = HEIGHT - searchRange-1;      
+int xlim = WIDTH - searchRange-1;
+bool field[HEIGHT][WIDTH];   // Initialize space for grid
+int i, j = 0;
+bool NextField[HEIGHT][WIDTH];
+
+
+/*
+    Create window and drawing surface layer
+ */
+SDL_Surface* imageSurface = NULL;
+SDL_Surface* windowSurface = NULL;
+
+/*Function Prototypes*/
+void Initial_array();
+void Draw_grid(int& x, int& y, SDL_Rect& R);
+bool Value_in_array(int val, uint8_t arr[]);
+
 int main(int argc, char *argv[])
 {
     //====================InitializationStart==================================//
-    /*
-    Create window and drawing surface layer
-    */
-    SDL_Surface *imageSurface = NULL;
-    SDL_Surface *windowSurface = NULL;
+    
 
     /*
     Initialize all subsystems for use in the program
@@ -47,10 +73,11 @@ int main(int argc, char *argv[])
     }
     
     SDL_Window* window = SDL_CreateWindow("GOL",
-                                            SDL_WINDOWPOS_UNDEFINED,
-                                            SDL_WINDOWPOS_UNDEFINED,
-                                            WIDTH, HEIGHT,
-                                            SDL_WINDOW_ALLOW_HIGHDPI);
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        HEIGHT, WIDTH,
+        SDL_WINDOW_ALLOW_HIGHDPI);
+
     windowSurface = SDL_GetWindowSurface(window);
     
     
@@ -73,33 +100,29 @@ int main(int argc, char *argv[])
     {
         std::cout << "SDL Could not load image! SDL Error: " << SDL_GetError() << std::endl;
     }
-    //====================InitializationEnd==================================//
 
     SDL_Rect dstrect;
     dstrect.x = 0;
     dstrect.y = 0;
     dstrect.w = 0;
     dstrect.h = 0;
-    srand(time(NULL));
-    for (i = 0; i <= HEIGHT - 1; i++)
-    {
-        for (j = 0; j <= WIDTH - 1; j++)
-        {
-            field[i][j] = rand() % 3;
-        }
-    }
-    for (i = 0; i <= HEIGHT - 1; i++)
-    {
-        for (j = 0; j <= WIDTH - 1; j++)
-        {
-            if (field[i][j] == 1)
-            {
-                dstrect.x = i;
-                dstrect.y = j;
-                SDL_BlitSurface(imageSurface, NULL, windowSurface, &dstrect);
-            }
-        }
-    }
+    //====================InitializationEnd==================================//
+    /*Initial state seed*/
+    
+    Initial_array();
+    /*
+    field[499][499] = true;
+    field[500][499] = true;
+    field[501][499] = true;
+    field[499][500] = true;
+    field[500][500] = false;
+    field[501][500] = true;
+    field[499][501] = true;
+    field[500][501] = true;
+    field[501][501] = true;
+    */
+    Draw_grid(dstrect.x, dstrect.y, dstrect);
+
     
     //==============================GameLoopStart==========================================//
     while (true)
@@ -109,12 +132,14 @@ int main(int argc, char *argv[])
             if (SDL_QUIT == windowEvent.type)
                 break;
         }
+        frameStart = SDL_GetTicks();
+        
 
         SDL_FillRect(windowSurface, NULL, 0x000000);
         
-        for (i = 0; i <= ylim; i++)
+        for (i = searchRange; i <= ylim; i++)
         {
-            for (j = 0; j <= xlim; j++)
+            for (j = searchRange; j <= xlim; j++)
             {
                 al = 0;
                 if (j == 0 && i == 0)
@@ -126,7 +151,7 @@ int main(int argc, char *argv[])
                     if (field[i][j + 1] == 1)
                         al++;
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
                     else if (al == 3 && field[i][j] == 0)
                         NextField[i][j] = 1;
@@ -150,12 +175,10 @@ int main(int argc, char *argv[])
                         }
                     }
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -170,12 +193,10 @@ int main(int argc, char *argv[])
                     if (field[i][j - 1] == 1)
                         al++;
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -192,12 +213,10 @@ int main(int argc, char *argv[])
                         }
                     }
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -205,24 +224,24 @@ int main(int argc, char *argv[])
                 }
                 else if (j > 0 && j < xlim && i > 0 && i < ylim)
                 {
-                    for (yy = -1; yy <= 1; yy++)
+                    for (yy = -searchRange; yy <= searchRange; yy++)
                     {
-                        for (xx = -1; xx <= 1; xx++)
+                        for (xx = -searchRange; xx <= searchRange; xx++)
                         {
-                            if (!(i + yy == i && j + xx == j))
+                            /*if (!(i + yy == i && j + xx == j))
                             {
+                            }
+                            */
                                 if (field[i + yy][j + xx] == 1)
                                     al++;
-                            }
+                            
                         }
                     }
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -239,12 +258,10 @@ int main(int argc, char *argv[])
                         }
                     }
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -259,12 +276,10 @@ int main(int argc, char *argv[])
                     if (field[i][j + 1] == 1)
                         al++;
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -282,12 +297,10 @@ int main(int argc, char *argv[])
                         }
                     }
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -302,12 +315,10 @@ int main(int argc, char *argv[])
                     if (field[i - 1][j] == 1)
                         al++;
                     //----------------------------------//
-                    if ((al == 2 || al == 3) && field[i][j] == 1)
+                    if (Value_in_array(al, stayAlive) && field[i][j] == 1)
                         NextField[i][j] = 1;
-                    else if (al == 3 && field[i][j] == 0)
+                    else if (Value_in_array(al, birth) && field[i][j] == 0)
                         NextField[i][j] = 1;
-                    else if (al < 1)
-                        NextField[i][j] = 0;
                     else
                         NextField[i][j] = 0;
                     //------------------------------//
@@ -324,27 +335,19 @@ int main(int argc, char *argv[])
         {
             for (j = 0; j <= WIDTH - 1; j++)
             {
-                if (NextField[i][j] == 1)
-                {
-                    dstrect.x = i;
-                    dstrect.y = j;
-                    SDL_BlitSurface(imageSurface, NULL, windowSurface, &dstrect);
-                }
-            }
-        }
-
-        for (i = 0; i <= HEIGHT - 1; i++)
-        {
-            for (j = 0; j <= WIDTH - 1; j++)
-            {
                 field[i][j] = NextField[i][j];
             }
         }
-        std::cout << "Iteration" << std::endl;
-        //SDL_Delay(16);
-        //SDL_FillRect(windowSurface, NULL, 0x000000);
-        //SDL_BlitSurface(imageSurface, NULL, windowSurface, &dstrect);
+        Draw_grid(dstrect.x, dstrect.y, dstrect);
+        
         SDL_UpdateWindowSurface(window);  
+
+        frameTime = SDL_GetTicks() - frameStart;
+
+        if (frameDelay > frameTime)
+        {
+            SDL_Delay(frameDelay - frameTime);
+        }
     }
     //==============================GameLoopEnd==========================================//
     SDL_FreeSurface(imageSurface);
@@ -356,13 +359,42 @@ int main(int argc, char *argv[])
     return EXIT_SUCCESS;
 }
 
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
+void Initial_array()
+{
+    srand(time(0));
+    for (i = 0; i <= HEIGHT - 1; i++)
+    {
+        
+        for (j = 0; j <= WIDTH - 1; j++)
+        {
+           field[i][j] = !(rand() % 3 && rand() % 4);
+        }
+    }
+}
+void Draw_grid(int& x, int& y, SDL_Rect& R)
+{
+    for (i = 0; i <= HEIGHT - 1; i++)
+    {
+        for (j = 0; j <= WIDTH - 1; j++)
+        {   
+            if (field[i][j] > 0)
+            {
+                x = i;
+                y = j;
+                SDL_BlitSurface(imageSurface, NULL, windowSurface, &R);
+            }
 
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
+        }
+    }
+}
+bool Value_in_array(int val, uint8_t arr[])
+{
+    int k;
+    
+    for (k = 0; k < stayAliveSize; k++)
+    {
+        if (arr[k] == val)
+            return true;
+    }
+    return false;
+}
