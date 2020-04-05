@@ -15,7 +15,7 @@ yy = Iterator for neighboring y-coordinates
 xx = Iterator for neighboring x-coordinates
 al = The number of alive neighbors for a given cell
 */
-const int WIDTH = 200, HEIGHT = 200, ITERATION_LIMIT = 200;
+const int WIDTH = 500, HEIGHT = 500, ITERATION_LIMIT = 200;
 int yy = 0, xx=0, al = 0;
 
 int main(int argc, char *argv[])
